@@ -1,11 +1,15 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using Fast_Mapper.Core.BaseLogic;
 using Fast_Mapper.Core.Exceptions;
 using Fast_Mapper.Sample.Models.Destination;
 using Fast_Mapper.Sample.Models.Source;
+#pragma warning disable CS8603 // Possible null reference return.
+#pragma warning disable CS8602 // Dereference of a possibly null reference.
 
 namespace Fast_Mapper.Tests;
 
+[SuppressMessage("Usage", "xUnit1031:Do not use blocking task operations in test method")]
 public class ExceptionHandlingTests
 {
     [Fact]
@@ -13,7 +17,7 @@ public class ExceptionHandlingTests
     {
         var cfg = new MapperConfig();
         cfg.CreateMap<User, UserDto>()
-            .ForMember(d => d.FullName, s => throw new InvalidOperationException("Test exception"));
+            .ForMember(d => d.FullName, _ => throw new InvalidOperationException("Test exception"));
 
         var mapper = cfg.BuildMapper();
         var user = new User { FirstName = "John" };
@@ -83,7 +87,7 @@ public class ExceptionHandlingTests
     {
         var cfg = new MapperConfig();
         cfg.CreateMap<User, UserDto>()
-            .ForMember(d => d.FullName, s => string.Join(" ", (string[])null!)); // Will throw ArgumentNullException
+            .ForMember(d => d.FullName, _ => string.Join(" ", null!)); // Will throw ArgumentNullException
 
         var mapper = cfg.BuildMapper();
         var user = new User { FirstName = "John" };
@@ -111,10 +115,10 @@ public class ExceptionHandlingTests
     {
         var cfg = new MapperConfig();
         cfg.CreateMap<Contact, ContactDto>()
-            .ConvertUsing(c => throw new InvalidOperationException("Test exception"));
+            .ConvertUsing(_ => throw new InvalidOperationException("Test exception"));
 
         var mapper = cfg.BuildMapper();
-        var contacts = new List<Contact> { new Contact("Email", "test@example.com") };
+        var contacts = new List<Contact> { new("Email", "test@example.com") };
 
         var ex = Assert.Throws<MapperMappingException>(() =>
             mapper.Map(contacts, typeof(List<Contact>), typeof(List<ContactDto>)));
@@ -127,7 +131,7 @@ public class ExceptionHandlingTests
     {
         var cfg = new MapperConfig();
         cfg.CreateMap<Contact, ContactDto>()
-            .ConvertUsing(c => throw new InvalidOperationException("Test exception"));
+            .ConvertUsing(_ => throw new InvalidOperationException("Test exception"));
         cfg.CreateMap<User, UserDto>()
             .ForMember(d => d.Contacts, s => s.Contacts);
 

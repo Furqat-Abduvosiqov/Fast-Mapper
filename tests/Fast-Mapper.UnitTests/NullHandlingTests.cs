@@ -1,10 +1,11 @@
-using Fast_Mapper.Core;
+using System.Diagnostics.CodeAnalysis;
 using Fast_Mapper.Core.BaseLogic;
 using Fast_Mapper.Sample.Models.Destination;
 using Fast_Mapper.Sample.Models.Source;
 
 namespace Fast_Mapper.Tests;
 
+[SuppressMessage("ReSharper", "ConditionIsAlwaysTrueOrFalseAccordingToNullableAPIContract")]
 public class NullHandlingTests
 {
     [Fact]
@@ -12,7 +13,7 @@ public class NullHandlingTests
     {
         var cfg = new MapperConfig();
         cfg.CreateMap<User, UserDto>()
-            .ForMember(d => d.AddressStreet, s => s.Address?.Street);
+            .ForMember(d => d.AddressStreet, s => s.Address?.Street!);
 
         var mapper = cfg.BuildMapper();
         var user = new User { FirstName = "John", Address = null };
@@ -213,7 +214,7 @@ public class NullHandlingTests
     {
         var cfg = new MapperConfig();
         cfg.CreateMap<User, UserDto>()
-            .ForMember(d => d.AddressStreet, s => s.Address?.Street);
+            .ForMember(d => d.AddressStreet, s => s.Address?.Street!);
 
         var mapper = cfg.BuildMapper();
         var users = new List<User>
