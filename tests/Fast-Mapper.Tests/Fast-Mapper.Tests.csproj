@@ -19,4 +19,9 @@
         <Using Include="Xunit"/>
     </ItemGroup>
 
+    <ItemGroup>
+      <ProjectReference Include="..\..\src\Fast-Mapper.Core\Fast-Mapper.Core.csproj" />
+      <ProjectReference Include="..\..\src\Fast-Mapper.Sample\Fast-Mapper.Sample.csproj" />
+    </ItemGroup>
+
 </Project>
