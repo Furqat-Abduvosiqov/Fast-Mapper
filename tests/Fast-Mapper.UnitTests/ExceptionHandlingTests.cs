@@ -1,5 +1,4 @@
 using System.Reflection;
-using Fast_Mapper.Core;
 using Fast_Mapper.Core.BaseLogic;
 using Fast_Mapper.Core.Exceptions;
 using Fast_Mapper.Sample.Models.Destination;
@@ -19,7 +18,8 @@ public class ExceptionHandlingTests
         var mapper = cfg.BuildMapper();
         var user = new User { FirstName = "John" };
 
-        Assert.Throws<InvalidOperationException>(() => mapper.Map<User, UserDto>(user));
+        var ex = Assert.Throws<MapperMappingException>(() => mapper.Map<User, UserDto>(user));
+        Assert.IsType<InvalidOperationException>(ex.InnerException);
     }
 
     [Fact]
@@ -32,7 +32,8 @@ public class ExceptionHandlingTests
         var mapper = cfg.BuildMapper();
         var user = new User { Id = 0 };
 
-        Assert.Throws<DivideByZeroException>(() => mapper.Map<User, UserDto>(user));
+        var ex = Assert.Throws<MapperMappingException>(() => mapper.Map<User, UserDto>(user));
+        Assert.IsType<DivideByZeroException>(ex.InnerException);
     }
 
     [Fact]
@@ -45,7 +46,8 @@ public class ExceptionHandlingTests
         var mapper = cfg.BuildMapper();
         var user = new User { FirstName = "John", Address = null };
 
-        Assert.Throws<NullReferenceException>(() => mapper.Map<User, UserDto>(user));
+        var ex = Assert.Throws<MapperMappingException>(() => mapper.Map<User, UserDto>(user));
+        Assert.IsType<NullReferenceException>(ex.InnerException);
     }
 
     [Fact]
@@ -58,7 +60,8 @@ public class ExceptionHandlingTests
         var mapper = cfg.BuildMapper();
         var user = new User { AgeString = "invalid" };
 
-        Assert.Throws<FormatException>(() => mapper.Map<User, UserDto>(user));
+        var ex = Assert.Throws<MapperMappingException>(() => mapper.Map<User, UserDto>(user));
+        Assert.IsType<FormatException>(ex.InnerException);
     }
 
     [Fact]
@@ -71,7 +74,8 @@ public class ExceptionHandlingTests
         var mapper = cfg.BuildMapper();
         var user = new User { FirstName = "" };
 
-        Assert.Throws<IndexOutOfRangeException>(() => mapper.Map<User, UserDto>(user));
+        var ex = Assert.Throws<MapperMappingException>(() => mapper.Map<User, UserDto>(user));
+        Assert.IsType<IndexOutOfRangeException>(ex.InnerException);
     }
 
     [Fact]
@@ -84,7 +88,8 @@ public class ExceptionHandlingTests
         var mapper = cfg.BuildMapper();
         var user = new User { FirstName = "John" };
 
-        Assert.Throws<ArgumentNullException>(() => mapper.Map<User, UserDto>(user));
+        var ex = Assert.Throws<MapperMappingException>(() => mapper.Map<User, UserDto>(user));
+        Assert.IsType<ArgumentNullException>(ex.InnerException);
     }
 
     [Fact]
@@ -97,7 +102,8 @@ public class ExceptionHandlingTests
         var mapper = cfg.BuildMapper();
         var user = new User { Id = 2 };
 
-        Assert.Throws<OverflowException>(() => mapper.Map<User, UserDto>(user));
+        var ex = Assert.Throws<MapperMappingException>(() => mapper.Map<User, UserDto>(user));
+        Assert.IsType<OverflowException>(ex.InnerException);
     }
 
     [Fact]
@@ -110,9 +116,10 @@ public class ExceptionHandlingTests
         var mapper = cfg.BuildMapper();
         var contacts = new List<Contact> { new Contact("Email", "test@example.com") };
 
-        var ex = Assert.Throws<TargetInvocationException>(() =>
+        var ex = Assert.Throws<MapperMappingException>(() =>
             mapper.Map(contacts, typeof(List<Contact>), typeof(List<ContactDto>)));
-        Assert.IsType<InvalidOperationException>(ex.InnerException);
+        Assert.IsType<TargetInvocationException>(ex.InnerException);
+        Assert.IsType<InvalidOperationException>(ex.InnerException?.InnerException);
     }
 
     [Fact]
@@ -129,11 +136,12 @@ public class ExceptionHandlingTests
         {
             Id = 1,
             FirstName = "John",
-            Contacts = new List<Contact> { new Contact("Email", "test@example.com") }
+            Contacts = new List<Contact> { new("Email", "test@example.com") }
         };
 
-        var ex = Assert.Throws<TargetInvocationException>(() => mapper.Map<User, UserDto>(user));
-        Assert.IsType<InvalidOperationException>(ex.InnerException);
+        var ex = Assert.Throws<MapperMappingException>(() => mapper.Map<User, UserDto>(user));
+        Assert.IsType<TargetInvocationException>(ex.InnerException);
+        Assert.IsType<InvalidOperationException>(ex.InnerException?.InnerException);
     }
 
     [Fact]
@@ -161,7 +169,7 @@ public class ExceptionHandlingTests
     {
         var cfg = new MapperConfig();
         cfg.CreateMap<User, UserDto>()
-            .ForMember(d => d.AddressStreet, s => s.Address?.Street); // Safe null propagation
+            .ForMember(d => d.AddressStreet, s => s.Address?.Street!); // Safe null propagation
 
         var mapper = cfg.BuildMapper();
         var user = new User { FirstName = "John", Address = null };
@@ -204,9 +212,10 @@ public class ExceptionHandlingTests
             .Select(i => new Contact($"Type{i}", $"Value{i}"))
             .ToList();
 
-        var ex = Assert.Throws<TargetInvocationException>(() =>
+        var ex = Assert.Throws<MapperMappingException>(() =>
             mapper.Map(contacts, typeof(List<Contact>), typeof(List<ContactDto>)));
-        Assert.IsType<InvalidOperationException>(ex.InnerException);
+        Assert.IsType<TargetInvocationException>(ex.InnerException);
+        Assert.IsType<InvalidOperationException>(ex.InnerException?.InnerException);
     }
 
     [Fact]
@@ -238,7 +247,7 @@ public class ExceptionHandlingTests
             .ForMember(d => d.FullName, s => s.FirstName + " " + s.LastName);
 
         var mapper = cfg.BuildMapper();
-        
+
         // Map multiple times to ensure no state issues
         for (int i = 0; i < 10; i++)
         {
@@ -246,6 +255,32 @@ public class ExceptionHandlingTests
             var dto = mapper.Map<User, UserDto>(user);
             Assert.Equal($"User{i} Test", dto.FullName);
         }
+    }
+
+    [Fact]
+    public void Throws_MapperArgumentNullException_for_null_config()
+    {
+        Assert.Throws<MapperArgumentNullException>(() => new Mapper(null!));
+    }
+
+    [Fact]
+    public void Throws_MapperArgumentNullException_for_null_sourceType_in_Map()
+    {
+        var cfg = new MapperConfig();
+        var mapper = cfg.BuildMapper();
+        var user = new User { FirstName = "John" };
+
+        Assert.Throws<MapperArgumentNullException>(() => mapper.Map(user, null!, typeof(UserDto)));
+    }
+
+    [Fact]
+    public void Throws_MapperArgumentNullException_for_null_destinationType_in_Map()
+    {
+        var cfg = new MapperConfig();
+        var mapper = cfg.BuildMapper();
+        var user = new User { FirstName = "John" };
+
+        Assert.Throws<MapperArgumentNullException>(() => mapper.Map(user, typeof(User), null!));
     }
 }
 
