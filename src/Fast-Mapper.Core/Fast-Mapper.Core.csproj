@@ -5,6 +5,20 @@
         <RootNamespace>Fast_Mapper.Core</RootNamespace>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
+
+        <!-- Package metadata -->
+        <PackageId>Fast-Mapper</PackageId>
+        <Version>1.0.0</Version> 
+        <Authors>Furqat-Abduvosiqov</Authors>
+        <Company>Furqat-Abduvosiqov</Company>
+        <Description>Fast object-to-object mapper for .NET</Description>
+        <PackageTags>mapper;mapping;fast</PackageTags>
+        <RepositoryUrl>https://github.com/Furqat-Abduvosiqov/Fast-Mapper</RepositoryUrl>
+        <RepositoryType>git</RepositoryType>
+        <PackageLicenseExpression>MIT</PackageLicenseExpression>
+
+        <!-- Optional: do not auto-generate package on local build -->
+        <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
     </PropertyGroup>
 
 </Project>
