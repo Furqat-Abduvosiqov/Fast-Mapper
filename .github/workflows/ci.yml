@@ -1,0 +1,57 @@
+name: Publish NuGet package
+
+on:
+  push:
+    tags:
+      - 'release*'
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Extract version from tag
+        id: extract
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          # remove common prefixes: release/, release-
+          VERSION="${TAG#release/}"
+          VERSION="${VERSION#release-}"
+          # if no version found, fail
+          if [[ "$VERSION" == "$TAG" ]]; then
+            echo "Tag does not contain a version part (expected 'release/X.Y.Z')."
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --configuration Release --no-restore
+
+      - name: Pack library
+        # Change project path to your library csproj if different
+        run: dotnet pack src/Fast-Mapper.Core/Fast-Mapper.Core.csproj --configuration Release --no-build -o ./nupkgs /p:PackageVersion=${{ steps.extract.outputs.version }}
+
+      - name: Push package to NuGet.org
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: |
+          echo "Pushing nupkgs..."
+          dotnet nuget push ./nupkgs/*.nupkg -k "$NUGET_API_KEY" -s https://api.nuget.org/v3/index.json --skip-duplicate
