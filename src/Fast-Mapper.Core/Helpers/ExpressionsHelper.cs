@@ -1,6 +1,7 @@
 ﻿using System.Linq.Expressions;
+using Fast_Mapper.Core.Exceptions;
 
-namespace Fast_Mapper.Core;
+namespace Fast_Mapper.Core.Helpers;
 
 /// <summary>
 /// Expressions helper class
@@ -16,6 +17,6 @@ internal static class ExpressionsHelper
         if (expr.Body is UnaryExpression { Operand: MemberExpression member2 })
             return member2.Member.Name;
 
-        throw new ArgumentException("Expression must be a member access", nameof(expr));
+        throw new MapperException("Expression must be a member access");
     }
 }

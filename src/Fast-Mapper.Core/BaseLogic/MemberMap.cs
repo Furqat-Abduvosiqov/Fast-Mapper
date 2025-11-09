@@ -1,6 +1,6 @@
 ﻿using Fast_Mapper.Core.Abstractions;
 
-namespace Fast_Mapper.Core;
+namespace Fast_Mapper.Core.BaseLogic;
 
 /// <summary>
 /// 

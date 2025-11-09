@@ -1,7 +1,7 @@
 ﻿using System.Collections.Concurrent;
 using Fast_Mapper.Core.Abstractions;
 
-namespace Fast_Mapper.Core;
+namespace Fast_Mapper.Core.BaseLogic;
 
 /// <summary>
 /// Mapper configuration class
@@ -31,7 +31,7 @@ public class MapperConfig
     /// <param name="dst"></param>
     /// <param name="map"></param>
     /// <returns></returns>
-    public bool TryGetMap(Type src, Type dst, out ITypeMap map) => _maps.TryGetValue((src, dst), out map);
+    public bool TryGetMap(Type src, Type dst, out ITypeMap map) => _maps.TryGetValue((src, dst), out map!);
     
     /// <summary>
     /// 

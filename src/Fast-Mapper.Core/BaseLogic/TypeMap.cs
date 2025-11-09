@@ -1,7 +1,9 @@
 ﻿using System.Linq.Expressions;
 using Fast_Mapper.Core.Abstractions;
+using Fast_Mapper.Core.Exceptions;
+using Fast_Mapper.Core.Helpers;
 
-namespace Fast_Mapper.Core;
+namespace Fast_Mapper.Core.BaseLogic;
 
 /// <summary>
 /// 
@@ -16,6 +18,24 @@ public class TypeMap<TSource, TDestination> : ITypeMap
     private readonly Dictionary<string, IMemberMap> _memberMaps = new(StringComparer.OrdinalIgnoreCase);
 
     public IReadOnlyDictionary<string, IMemberMap> MemberMaps => _memberMaps;
+    
+    private Func<TSource, TDestination>? _convertUsing;
+
+    /// <summary>
+    /// Provide a custom converter for the whole source -> destination.
+    /// </summary>
+    public TypeMap<TSource, TDestination> ConvertUsing(Func<TSource, TDestination> converter)
+    {
+        _convertUsing = converter ?? throw new MapperException(nameof(converter));
+        return this;
+    }
+
+    internal bool TryGetConverter(out Func<TSource, TDestination>? converter)
+    {
+        converter = _convertUsing;
+        return converter != null;
+    }
+
     
     /// <summary>
     /// 
