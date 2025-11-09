@@ -8,4 +8,8 @@
         <Nullable>enable</Nullable>
     </PropertyGroup>
 
+    <ItemGroup>
+      <ProjectReference Include="..\Fast-Mapper.Core\Fast-Mapper.Core.csproj" />
+    </ItemGroup>
+
 </Project>
