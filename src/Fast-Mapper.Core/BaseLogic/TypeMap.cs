@@ -75,12 +75,12 @@ public class TypeMap<TSource, TDestination> : ITypeMap
     }
     
     /// <summary>
-    /// 
+    /// Attempts to get a member map for the specified destination property name.
     /// </summary>
-    /// <param name="destName"></param>
-    /// <param name="map"></param>
-    /// <returns></returns>
-    internal bool TryGetMemberMap(string destName, out IMemberMap map)
+    /// <param name="destName">The destination property name.</param>
+    /// <param name="map">The member map if found, otherwise null.</param>
+    /// <returns>True if the member map was found, otherwise false.</returns>
+    internal bool TryGetMemberMap(string destName, out IMemberMap? map)
     {
         return _memberMaps.TryGetValue(destName, out map);
     }
