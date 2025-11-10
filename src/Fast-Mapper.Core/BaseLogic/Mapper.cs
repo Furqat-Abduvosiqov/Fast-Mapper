@@ -1,4 +1,5 @@
-﻿using System.Collections.Concurrent;
+﻿using System.Collections;
+using System.Collections.Concurrent;
 using System.Linq.Expressions;
 using System.Reflection;
 using Fast_Mapper.Core.Abstractions;
@@ -14,7 +15,9 @@ namespace Fast_Mapper.Core.BaseLogic;
 public class Mapper : IMapper
 {
     private readonly MapperConfig _config;
-
+    private const string Instance = "instance";
+    private const string Value = "value";
+    
     // simple thread safe caches
     private static readonly ConcurrentDictionary<Type, PropertyInfo[]> WritablePropertiesCache = new();
     private static readonly ConcurrentDictionary<Type, PropertyInfo[]> ReadablePropertiesCache = new();
@@ -30,7 +33,7 @@ public class Mapper : IMapper
     private readonly ConcurrentDictionary<(Type src, Type dst), Func<object, object>> _mapDelegateCache = new();
 
     // Compiled collection mapping delegates: Func<IEnumerable source, List<TDest>>
-    private readonly ConcurrentDictionary<(Type srcElem, Type dstElem), Func<System.Collections.IEnumerable, object>> _collectionMapDelegateCache = new();
+    private readonly ConcurrentDictionary<(Type srcElem, Type dstElem), Func<IEnumerable, object>> _collectionMapDelegateCache = new();
 
     /// <summary>
     /// Initializes a new instance of the <see cref="Mapper"/> class with the specified configuration.
@@ -411,21 +414,23 @@ public class Mapper : IMapper
     /// <summary>
     /// Creates a compiled property getter that accepts an object instance and returns the property value as object.
     /// </summary>
-    /// <param name="prop">Property to create a getter for.</param>
+    /// <param name="propertyInfo">Property to create a getter for.</param>
     /// <returns>Getter delegate accepting object instance and returning property value boxed as object.</returns>
     /// <exception cref="MapperArgumentNullException">Thrown when prop is null.</exception>
     /// <exception cref="MapperConfigurationException">Thrown when property has no declaring type.</exception>
-    private static Func<object, object?> CreateGetter(PropertyInfo prop)
+    private static Func<object, object?> CreateGetter(PropertyInfo propertyInfo)
     {
-        if (prop == null) throw new MapperArgumentNullException(nameof(prop));
-        if (prop.DeclaringType == null)
-            throw new MapperConfigurationException($"Property '{prop.Name}' has no declaring type");
-
-        var instanceParam = Expression.Parameter(typeof(object), "instance");
-        var castInstance = Expression.Convert(instanceParam, prop.DeclaringType);
-        var propAccess = Expression.Property(castInstance, prop);
-        var convertResult = Expression.Convert(propAccess, typeof(object));
-        var lambda = Expression.Lambda<Func<object, object?>>(convertResult, instanceParam);
+        if (propertyInfo == null) 
+            throw new MapperArgumentNullException(nameof(propertyInfo));
+        
+        if (propertyInfo.DeclaringType == null)
+            throw new MapperConfigurationException($"Property '{propertyInfo.Name}' has no declaring type");
+        
+        var instanceParameters = Expression.Parameter(typeof(object), Instance);
+        var castInstance = Expression.Convert(instanceParameters, propertyInfo.DeclaringType);
+        var propertyAccess = Expression.Property(castInstance, propertyInfo);
+        var convertResult = Expression.Convert(propertyAccess, typeof(object));
+        var lambda = Expression.Lambda<Func<object, object?>>(convertResult, instanceParameters);
         return lambda.Compile();
     }
 
@@ -433,27 +438,29 @@ public class Mapper : IMapper
     /// Creates a compiled property setter that accepts an object instance and an object value.
     /// The setter casts the instance and value to the correct types and assigns the property.
     /// </summary>
-    /// <param name="prop">Property to create a setter for.</param>
+    /// <param name="propertyInfo">Property to create a setter for.</param>
     /// <returns>Setter delegate accepting destination instance and boxed value.</returns>
     /// <exception cref="MapperArgumentNullException">Thrown when prop is null.</exception>
     /// <exception cref="MapperConfigurationException">Thrown when property has no declaring type.</exception>
-    private static Action<object, object?> CreateSetter(PropertyInfo prop)
+    private static Action<object, object?> CreateSetter(PropertyInfo propertyInfo)
     {
-        if (prop == null) throw new MapperArgumentNullException(nameof(prop));
-        if (prop.DeclaringType == null)
-            throw new MapperConfigurationException($"Property '{prop.Name}' has no declaring type");
+        if (propertyInfo == null) 
+            throw new MapperArgumentNullException(nameof(propertyInfo));
+        
+        if (propertyInfo.DeclaringType == null)
+            throw new MapperConfigurationException($"Property '{propertyInfo.Name}' has no declaring type");
 
-        var instanceParam = Expression.Parameter(typeof(object), "instance");
-        var valueParam = Expression.Parameter(typeof(object), "value");
+        var instanceParameter = Expression.Parameter(typeof(object), Instance);
+        var valueParameter = Expression.Parameter(typeof(object), Value);
 
-        var castInstance = Expression.Convert(instanceParam, prop.DeclaringType);
+        var castInstance = Expression.Convert(instanceParameter, propertyInfo.DeclaringType);
 
-        var targetType = prop.PropertyType;
-        var convertedValue = Expression.Convert(valueParam, targetType);
+        var targetType = propertyInfo.PropertyType;
+        var convertedValue = Expression.Convert(valueParameter, targetType);
 
-        var propertySet = Expression.Assign(Expression.Property(castInstance, prop), convertedValue);
+        var propertySet = Expression.Assign(Expression.Property(castInstance, propertyInfo), convertedValue);
         // we create a lambda where instance is the destination instance passed by the caller.
-        var lambda = Expression.Lambda<Action<object, object?>>(propertySet, instanceParam, valueParam);
+        var lambda = Expression.Lambda<Action<object, object?>>(propertySet, instanceParameter, valueParameter);
         return lambda.Compile();
     }
 
@@ -475,23 +482,22 @@ public class Mapper : IMapper
         if (sourceType == null) return false;
         if (destinationType == null) return false;
 
-        if (!typeof(System.Collections.IEnumerable).IsAssignableFrom(sourceType)) return false;
+        if (!typeof(IEnumerable).IsAssignableFrom(sourceType)) return false;
 
         // Use cached element type resolution
-        var srcElem = ElementTypeCache.GetOrAdd(sourceType, GetIEnumerableElementType);
-        var dstElem = ElementTypeCache.GetOrAdd(destinationType, GetIEnumerableElementType);
-        if (srcElem == null || dstElem == null) return false;
+        var sourceElement = ElementTypeCache.GetOrAdd(sourceType, GetIEnumerableElementType);
+        var destinationElement = ElementTypeCache.GetOrAdd(destinationType, GetIEnumerableElementType);
+        if (sourceElement == null || destinationElement == null) return false;
 
-        var srcEnum = (System.Collections.IEnumerable)source;
-        if (srcEnum is null) return false;
+        var sourceEnumerable = (IEnumerable)source;
 
         // Get or build compiled collection mapping delegate
-        var key = (srcElem, dstElem);
+        var key = (srcElem: sourceElement, dstElem: destinationElement);
         var collectionMapper = _collectionMapDelegateCache.GetOrAdd(key, k => BuildCollectionMappingDelegate(k.srcElem, k.dstElem));
 
         if (collectionMapper == null) return false;
 
-        result = collectionMapper(srcEnum);
+        result = collectionMapper(sourceEnumerable);
         return true;
     }
 
@@ -499,68 +505,66 @@ public class Mapper : IMapper
     /// Builds a compiled delegate for mapping collections from source element type to destination element type.
     /// Uses expression trees to create a strongly-typed, optimized mapping function with capacity pre-allocation.
     /// </summary>
-    /// <param name="srcElemType">Source element type.</param>
-    /// <param name="dstElemType">Destination element type.</param>
+    /// <param name="sourceElemType">Source element type.</param>
+    /// <param name="destinationElemType">Destination element type.</param>
     /// <returns>Compiled function that maps IEnumerable to List of destination element type.</returns>
     /// <exception cref="MapperArgumentNullException">Thrown when element types are null.</exception>
     /// <exception cref="MapperConfigurationException">Thrown when list constructor cannot be created.</exception>
-    private Func<System.Collections.IEnumerable, object> BuildCollectionMappingDelegate(Type srcElemType, Type dstElemType)
+    private Func<IEnumerable, object> BuildCollectionMappingDelegate(Type sourceElemType, Type destinationElemType)
     {
-        if (srcElemType == null) throw new MapperArgumentNullException(nameof(srcElemType));
-        if (dstElemType == null) throw new MapperArgumentNullException(nameof(dstElemType));
+        if (sourceElemType == null) throw new MapperArgumentNullException(nameof(sourceElemType));
+        if (destinationElemType == null) throw new MapperArgumentNullException(nameof(destinationElemType));
 
         // Get or create compiled list constructor with capacity
-        var listCtor = ListConstructorCache.GetOrAdd(dstElemType, CreateListConstructor);
-        if (listCtor == null)
-            throw new MapperConfigurationException($"Failed to create list constructor for type '{dstElemType.FullName}'");
+        var listConstructor = ListConstructorCache.GetOrAdd(destinationElemType, CreateListConstructor);
+        if (listConstructor == null)
+            throw new MapperConfigurationException($"Failed to create list constructor for type '{destinationElemType.FullName}'");
 
         // Return a closure that efficiently maps collections
-        return sourceEnum =>
+        return sourceEnumerable =>
         {
-            if (sourceEnum == null)
-                throw new MapperArgumentNullException(nameof(sourceEnum));
+            if (sourceEnumerable == null)
+                throw new MapperArgumentNullException(nameof(sourceEnumerable));
 
             // Try to get count for capacity pre-allocation
             int capacity = 0;
-            if (sourceEnum is System.Collections.ICollection collection && collection != null)
+            if (sourceEnumerable is ICollection collection)
             {
                 capacity = collection.Count;
             }
 
             // Create list with pre-allocated capacity (avoids resizing)
-            var list = listCtor(capacity);
+            var list = listConstructor(capacity);
             if (list == null)
-                throw new MapperConfigurationException($"List constructor for type '{dstElemType.FullName}' returned null");
+                throw new MapperConfigurationException($"List constructor for type '{destinationElemType.FullName}' returned null");
 
-            var typedList = (System.Collections.IList)list;
+            var typedList = (IList)list;
 
             // Map each element using the main Map method
-            foreach (var item in sourceEnum)
+            foreach (var item in sourceEnumerable)
             {
                 try
                 {
                     if (item != null)
                     {
-                        var mapped = Map(item, srcElemType, dstElemType);
+                        var mapped = Map(item, sourceElemType, destinationElemType);
                         typedList.Add(mapped);
                     }
                     else
                     {
                         // Handle null items - add default value
-                        typedList.Add(GetDefaultFor(dstElemType));
+                        typedList.Add(GetDefaultFor(destinationElemType));
                     }
                 }
                 catch (MapperException)
                 {
-                    // Re-throw mapper exceptions as-is
                     throw;
                 }
-                catch (Exception ex)
+                catch (Exception exception)
                 {
-                    // Wrap other exceptions with context information
                     throw new MapperMappingException(
-                        $"Error mapping collection element from type '{srcElemType.FullName}' to '{dstElemType.FullName}'",
-                        srcElemType, dstElemType, null, ex);
+                        $"Error mapping collection element from type '{sourceElemType.FullName}' to '{destinationElemType.FullName}'",
+                        sourceElemType, destinationElemType, null, exception);
                 }
             }
 
