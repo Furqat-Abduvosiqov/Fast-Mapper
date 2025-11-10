@@ -7,9 +7,6 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Fast-Mapper.Sample", "src\Fast-Mapper.Sample\Fast-Mapper.Sample.csproj", "{10CD1AD0-B7D7-4135-808B-ED41D14A3C7F}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{B8CF5212-D0B9-40F0-B17B-ACDDB792D9D5}"
-	ProjectSection(SolutionItems) = preProject
-		tests\Fast-Mapper.Benchmarks\Fast-Mapper.Benchmarks.csproj = tests\Fast-Mapper.Benchmarks\Fast-Mapper.Benchmarks.csproj
-	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Fast-Mapper.UnitTests", "tests\Fast-Mapper.UnitTests\Fast-Mapper.UnitTests.csproj", "{0B1EA6C7-ABE1-4306-BD0D-38D469A6F837}"
 EndProject

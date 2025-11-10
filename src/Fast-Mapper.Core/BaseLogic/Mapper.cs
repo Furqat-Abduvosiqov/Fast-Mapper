@@ -368,62 +368,44 @@ public class Mapper : IMapper
     /// The returned delegate constructs a new instance and returns it as object.
     /// Handles records and types with parameterized constructors by using default values.
     /// </summary>
-    /// <param name="t">Type to create a constructor delegate for.</param>
-    /// <returns>Delegate that constructs and returns a new instance of <paramref name="t"/>.</returns>
+    /// <param name="type">Type to create a constructor delegate for.</param>
+    /// <returns>Delegate that constructs and returns a new instance of <paramref name="type"/>.</returns>
     /// <exception cref="MapperArgumentNullException">Thrown when type is null.</exception>
     /// <exception cref="MapperConfigurationException">Thrown when type has no accessible constructor.</exception>
-    private static Func<object> CreateConstructor(Type t)
+    private static Func<object> CreateConstructor(Type type)
     {
-        if (t == null) throw new MapperArgumentNullException(nameof(t));
+        if (type == null) 
+            throw new MapperArgumentNullException(nameof(type));
+        
+        if (type.IsAbstract || type.IsInterface)
+            throw new MapperConfigurationException($"Type '{type.FullName}' cannot be instantiated.");
 
         // Try to get parameterless constructor first
-        var parameterlessCtor = t.GetConstructor(BindingFlags.Public | BindingFlags.Instance, null, Type.EmptyTypes, null);
+        var parameterlessConstructor = type.GetConstructor(BindingFlags.Public | BindingFlags.Instance, null, Type.EmptyTypes, null);
 
-        if (parameterlessCtor != null)
+        if (parameterlessConstructor != null)
         {
-            var newExpr = Expression.New(parameterlessCtor);
-            var convert = Expression.Convert(newExpr, typeof(object));
-            var lambda = Expression.Lambda<Func<object>>(convert);
-            return lambda.Compile();
+            var newExpression = Expression.New(parameterlessConstructor);
+            return Expression.Lambda<Func<object>>(Expression.Convert(newExpression, typeof(object))).Compile();
         }
 
         // For records or types without parameterless constructor, find constructor with parameters
-        var ctors = t.GetConstructors(BindingFlags.Public | BindingFlags.Instance);
-        if (ctors != null && ctors.Length > 0)
-        {
-            // Use the first constructor and provide default values for parameters
-            var ctor = ctors[0];
-            if (ctor != null)
-            {
-                var parameters = ctor.GetParameters();
-                if (parameters != null && parameters.Length > 0)
-                {
-                    var defaultArgs = parameters
-                        .Where(p => p != null && p.ParameterType != null)
-                        .Select(p => Expression.Constant(GetDefaultFor(p.ParameterType), p.ParameterType))
-                        .ToArray();
+        var constructors = type.GetConstructors(BindingFlags.Public | BindingFlags.Instance);
+        if (constructors is null || constructors.Length == 0 )
+            throw new MapperConfigurationException($"Type '{type.FullName ?? type.Name}' does not have an accessible constructor.");
+        
+        var constructor = constructors[0];
+        if (constructor == null)
+            throw new MapperConfigurationException($"Type '{type.FullName ?? type.Name}' does not have an accessible constructor.");
+        
+        var parameters = constructor.GetParameters();
+        
+        var arguments = parameters.Length > 0
+            ? parameters.Select(p => Expression.Constant(GetDefaultFor(p.ParameterType), p.ParameterType)).ToArray()
+            : Array.Empty<Expression>();
 
-                    if (defaultArgs != null && defaultArgs.Length == parameters.Length)
-                    {
-                        var newExpr = Expression.New(ctor, defaultArgs);
-                        var convert = Expression.Convert(newExpr, typeof(object));
-                        var lambda = Expression.Lambda<Func<object>>(convert);
-                        return lambda.Compile();
-                    }
-                }
-                else if (parameters != null && parameters.Length == 0)
-                {
-                    // Constructor with no parameters (shouldn't happen as we checked parameterless first, but be safe)
-                    var newExpr = Expression.New(ctor);
-                    var convert = Expression.Convert(newExpr, typeof(object));
-                    var lambda = Expression.Lambda<Func<object>>(convert);
-                    return lambda.Compile();
-                }
-            }
-        }
-
-        // Fallback: throw exception
-        throw new MapperConfigurationException($"Type '{t.FullName ?? t.Name}' does not have an accessible constructor.");
+        var expression = Expression.New(constructor, arguments);
+        return Expression.Lambda<Func<object>>(Expression.Convert(expression, typeof(object))).Compile();
     }
 
     /// <summary>

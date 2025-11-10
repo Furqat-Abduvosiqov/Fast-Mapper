@@ -1,5 +1,4 @@
-﻿using Fast_Mapper.Core;
-using Fast_Mapper.Core.BaseLogic;
+﻿using Fast_Mapper.Core.BaseLogic;
 using Fast_Mapper.Sample.Models.Destination;
 using Fast_Mapper.Sample.Models.Source;
 
