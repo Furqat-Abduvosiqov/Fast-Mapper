@@ -30,10 +30,15 @@ public class Mapper : IMapper
     private static readonly ConcurrentDictionary<Type, Func<int, object>> ListConstructorCache = new();
 
     // compiled mapping delegates: Func<object source, object destination>
-    private readonly ConcurrentDictionary<(Type src, Type dst), Func<object, object>> _mapDelegateCache = new();
+    // Use Lazy to avoid duplicate compilation under concurrency
+    private readonly ConcurrentDictionary<(Type src, Type dst), Lazy<Func<object, object>>> _mapDelegateCache = new();
 
     // Compiled collection mapping delegates: Func<IEnumerable source, List<TDest>>
-    private readonly ConcurrentDictionary<(Type srcElem, Type dstElem), Func<IEnumerable, object>> _collectionMapDelegateCache = new();
+    private readonly ConcurrentDictionary<(Type srcElem, Type dstElem), Lazy<Func<IEnumerable, object>>> _collectionMapDelegateCache = new();
+
+    // Cache MethodInfo lookups for type map implementations
+    private static readonly ConcurrentDictionary<Type, MethodInfo?> TryGetConverterMethodCache = new();
+    private static readonly ConcurrentDictionary<Type, MethodInfo?> TryGetMemberMapMethodCache = new();
 
     /// <summary>
     /// Initializes a new instance of the <see cref="Mapper"/> class with the specified configuration.
@@ -95,8 +100,10 @@ public class Mapper : IMapper
         // If we have a TypeMap and a converter, use it.
         if (_config.TryGetMap(sourceType, destinationType, out var typeMapObj) && typeMapObj != null)
         {
-            var tryGetConverterMethod = typeMapObj.GetType().GetMethod("TryGetConverter",
-                BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+            var mapType = typeMapObj.GetType();
+
+            var tryGetConverterMethod = TryGetConverterMethodCache.GetOrAdd(mapType, t =>
+                t.GetMethod("TryGetConverter", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public));
 
             if (tryGetConverterMethod != null)
             {
@@ -126,7 +133,8 @@ public class Mapper : IMapper
 
         // Convention-based mapping: use or build cached delegate
         var key = (src: sourceType, dst: destinationType);
-        var mapDelegate = _mapDelegateCache.GetOrAdd(key, k => BuildMappingDelegate(k.src, k.dst));
+        var lazy = _mapDelegateCache.GetOrAdd(key, k => new Lazy<Func<object, object>>(() => BuildMappingDelegate(k.src, k.dst), LazyThreadSafetyMode.ExecutionAndPublication));
+        var mapDelegate = lazy.Value;
         return mapDelegate(source);
     }
 
@@ -157,6 +165,9 @@ public class Mapper : IMapper
             t.GetProperties(BindingFlags.Public | BindingFlags.Instance)
                 .Where(p => p != null && p.CanRead).ToArray());
 
+        // build fast lookup for readable props by name (case-insensitive)
+        var readableDict = readable.ToDictionary(p => p.Name, StringComparer.OrdinalIgnoreCase);
+
         // prepare getter/setter delegates for matching props
         var propPairs = new List<(Func<object, object?> getter, Action<object, object?> setter, Type srcPropType, Type dstPropType)>();
 
@@ -164,8 +175,9 @@ public class Mapper : IMapper
         {
             if (dstProp == null) continue;
 
-            var srcProp = readable.FirstOrDefault(p => p != null && string.Equals(p.Name, dstProp.Name, StringComparison.OrdinalIgnoreCase));
-            if (srcProp == null) continue;
+            if (dstProp.Name == null) continue;
+
+            if (!readableDict.TryGetValue(dstProp.Name, out var srcProp)) continue;
 
             var getter = GetterCache.GetOrAdd(srcProp, CreateGetter);
             var setter = SetterCache.GetOrAdd(dstProp, CreateSetter);
@@ -208,8 +220,7 @@ public class Mapper : IMapper
                 {
                     // Wrap other exceptions with context information
                     throw new MapperMappingException(
-                        $"Error mapping property '{srcPropType.Name}' to '{dstPropType.Name}' " +
-                        $"from type '{sourceType.FullName}' to '{destinationType.FullName}'",
+                        $"Error mapping property from type '{sourceType.FullName}' to '{destinationType.FullName}'",
                         sourceType, destinationType, srcPropType.Name, ex);
                 }
             }
@@ -250,7 +261,11 @@ public class Mapper : IMapper
             t.GetProperties(BindingFlags.Public | BindingFlags.Instance)
                 .Where(p => p != null && p.CanRead).ToArray());
 
-        var tryGetMemberMapMethod = map.GetType().GetMethod("TryGetMemberMap", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+        var readableDict = readable.ToDictionary(p => p.Name, StringComparer.OrdinalIgnoreCase);
+
+        var mapType = map.GetType();
+        var tryGetMemberMapMethod = TryGetMemberMapMethodCache.GetOrAdd(mapType, t =>
+            t.GetMethod("TryGetMemberMap", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public));
 
         foreach (var destProp in writable)
         {
@@ -293,8 +308,7 @@ public class Mapper : IMapper
                     }
                 }
 
-                var srcProp = readable.FirstOrDefault(p => p != null && string.Equals(p.Name, destProp.Name, StringComparison.OrdinalIgnoreCase));
-                if (srcProp == null) continue;
+                if (!readableDict.TryGetValue(destProp.Name, out var srcProp)) continue;
 
                 var getter = GetterCache.GetOrAdd(srcProp, CreateGetter);
                 var setterForDest = SetterCache.GetOrAdd(destProp, CreateSetter);
@@ -493,9 +507,11 @@ public class Mapper : IMapper
 
         // Get or build compiled collection mapping delegate
         var key = (srcElem: sourceElement, dstElem: destinationElement);
-        var collectionMapper = _collectionMapDelegateCache.GetOrAdd(key, k => BuildCollectionMappingDelegate(k.srcElem, k.dstElem));
+        var collectionMapperLazy = _collectionMapDelegateCache.GetOrAdd(key, k => new Lazy<Func<IEnumerable, object>>(() => BuildCollectionMappingDelegate(k.srcElem, k.dstElem), LazyThreadSafetyMode.ExecutionAndPublication));
 
-        if (collectionMapper == null) return false;
+        if (collectionMapperLazy == null) return false;
+
+        var collectionMapper = collectionMapperLazy.Value;
 
         result = collectionMapper(sourceEnumerable);
         return true;
@@ -662,3 +678,4 @@ public class Mapper : IMapper
         return null;
     }
 }
+
