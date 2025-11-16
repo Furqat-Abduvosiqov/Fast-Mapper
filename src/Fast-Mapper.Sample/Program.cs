@@ -8,39 +8,31 @@ internal static class Program
 {
     static void Main()
     {
-        var cfg = new MapperConfig();
-
-        // 1) Convention-based mapping for Contact -> ContactDto (positional record properties map by name)
-        cfg.CreateMap<Contact, ContactDto>();
-
-        // 2) Simple mapping for Address -> AddressDto (same names)
-        cfg.CreateMap<Address, AddressDto>();
-
-        // 3) User -> UserDto demonstrates:
-        //    - custom member resolver (FullName)
-        //    - flattening (AddressStreet)
-        //    - ignoring sensitive fields (Password)
-        //    - mapping collections (Contacts)
-        //    - custom conversion from AgeString -> Age via resolver
-        cfg.CreateMap<User, UserDto>()
-            .ForMember(dest => dest.FullName, src => string.Join(' ', new[] { src.FirstName, src.LastName }.Where(s => !string.IsNullOrWhiteSpace(s))))
-            .ForMember(dest => dest.AddressStreet, src => (src.Address is null ? null : $"{src.Address.Street}, {src.Address.City}")! )
-            .ForMember(dest => dest.Contacts, src => src.Contacts) // let the mapper map individual Contact -> ContactDto items
-            .ForMember(dest => dest.Id, src => src.Id + 1000) // demonstrate mapping with transform
-            .ForMember(dest => dest.Age, src => {
-                if (int.TryParse(src.AgeString, out var a)) return a; return 0; })
-            .Ignore(dest => dest.Password);
-
-        // 4) Order -> OrderDto using a full-type converter (ConvertUsing)
-        cfg.CreateMap<Order, OrderDto>()
-            .ConvertUsing(o => new OrderDto
-            {
-                Id = o.Id,
-                TotalFormatted = o.Total.ToString("C"),
-                Status = o.Status.ToString()
-            });
-
-        var mapper = cfg.BuildMapper();
+        // Build mapper using the fluent MapperBuilder API
+        var mapper = MapperBuilder.Create()
+            // 1) Convention-based mapping for Contact -> ContactDto
+            .CreateMap<Contact, ContactDto>().Done()
+            // 2) Simple mapping for Address -> AddressDto
+            .CreateMap<Address, AddressDto>().Done()
+            // 3) User -> UserDto demonstrates custom resolvers, flattening, ignores and collection mapping
+            .CreateMap<User, UserDto>()
+                .ForMember(dest => dest.FullName, src => string.Join(' ', new[] { src.FirstName, src.LastName }.Where(s => !string.IsNullOrWhiteSpace(s))))
+                .ForMember(dest => dest.AddressStreet, src => (src.Address is null ? null : $"{src.Address.Street}, {src.Address.City}")! )
+                .ForMember(dest => dest.Contacts, src => src.Contacts) // let the mapper map Contact -> ContactDto items
+                .ForMember(dest => dest.Id, src => src.Id + 1000)
+                .ForMember(dest => dest.Age, src => { if (int.TryParse(src.AgeString, out var a)) return a; return 0; })
+                .Ignore(dest => dest.Password)
+            .Done()
+            // 4) Order -> OrderDto using a full-type converter (ConvertUsing)
+            .CreateMap<Order, OrderDto>()
+                .ConvertUsing(o => new OrderDto
+                {
+                    Id = o.Id,
+                    TotalFormatted = o.Total.ToString("C"),
+                    Status = o.Status.ToString()
+                })
+            .Done()
+            .Build();
 
         // Create a complex user
         var user = new User
@@ -72,10 +64,17 @@ internal static class Program
             Console.WriteLine($"  - {c.Type}: {c.Value}");
 
         // Map a collection of users
-        var users = new List<User> 
-        { 
-            user, new() { Id = 2, FirstName = "Jane", LastName = "Smith", 
-            Contacts = [new Contact("Email", "jane@x.com")], AgeString = "27" } 
+        var users = new List<User>
+        {
+            user,
+            new ()
+            {
+                Id = 2,
+                FirstName = "Jane",
+                LastName = "Smith",
+                Contacts = new List<Contact> { new("Email", "jane@x.com") },
+                AgeString = "27"
+            }
         };
         
         // Use the object-based Map overload for collections and cast the result to List<UserDto>
